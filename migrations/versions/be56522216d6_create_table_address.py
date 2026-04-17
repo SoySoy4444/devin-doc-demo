@@ -1,10 +1,11 @@
 """create table addresses
 
 Revision ID: be56522216d6
-Revises: 
+Revises:
 Create Date: 2022-10-11 20:15:07.799629
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel
