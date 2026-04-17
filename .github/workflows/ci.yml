@@ -2,72 +2,134 @@ name: CI
 
 on: [ push, workflow_dispatch ]
 
+# Cancel in-progress runs for the same ref (branch / PR) to avoid races
+# between overlapping pushes. The gh-pages deploy gets its own group
+# below so we do not cancel a deploy mid-publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default to read-only permissions. Individual jobs opt into more.
+permissions:
+  contents: read
+
 env:
   TEST_TAG: tzelleke/plotly-dash-app:test
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v3
-    - uses: psf/black@stable
-    - uses: chartboost/ruff-action@v1
-    - uses: hadolint/hadolint-action@v3.1.0
+      - uses: actions/checkout@v4
+      # Pin to a specific release tag instead of the floating `@stable`
+      # branch so the formatter version cannot change out from under us.
+      # Kept on the 23.x line to match `black = "^23.3.0"` in pyproject.toml
+      # so CI and local `black` agree on the formatting rules.
+      - uses: psf/black@23.12.1
+      # `chartboost/ruff-action` is archived/unmaintained. Use the
+      # official action from Astral instead.
+      # `version: latest` skips pyproject.toml's `^0.0.265` constraint,
+      # which the action would otherwise treat as a literal version and
+      # fail to download. Mirrors the old chartboost action's behavior
+      # of installing the latest ruff.
+      - uses: astral-sh/ruff-action@v3
+        with:
+          version: latest
+      - uses: hadolint/hadolint-action@v3.1.0
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-    - uses: actions/checkout@v3
-    - uses: docker/setup-buildx-action@v2
-    - uses: docker/build-push-action@v4
-      with:
-        context: .
-        target: test
-        load: true
-        tags: ${{ env.TEST_TAG }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-    - name: Run pytest in container
-      run: |
-        set -o pipefail
-        mkdir share
-        docker run --rm -i \
-        -v $(pwd)/share:/root/pytest \
-        ${{ env.TEST_TAG }} pytest
-    - name: Render coverage report to step summary
-      run: |
-        set -o pipefail
-        echo '# Coverage report' >> $GITHUB_STEP_SUMMARY
-        docker run --rm -i \
-        -v $(pwd)/share:/root/pytest \
-        ${{ env.TEST_TAG }} coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: test
+          load: true
+          tags: ${{ env.TEST_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Retry pytest in case of transient container / network / cache
+      # hiccups. The `share/` volume is wiped on each attempt so state
+      # cannot leak between retries.
+      - name: Run pytest in container
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          retry_on: error
+          command: |
+            set -euo pipefail
+            rm -rf share
+            mkdir -p share
+            docker run --rm -i \
+              -v "$(pwd)/share:/root/pytest" \
+              ${{ env.TEST_TAG }} pytest
+      - name: Render coverage report to step summary
+        run: |
+          set -euo pipefail
+          echo '# Coverage report' >> "$GITHUB_STEP_SUMMARY"
+          docker run --rm -i \
+            -v "$(pwd)/share:/root/pytest" \
+            ${{ env.TEST_TAG }} coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
 
+  # Docs deployment is intentionally disabled (see commit "disable docs
+  # deployment" on main). The hardened definitions are kept below as
+  # comments so they can be re-enabled in one step. When re-enabling,
+  # remember to restore `permissions: contents: write` on `deploy-docs`,
+  # keep the `gh-pages-deploy` concurrency group, and keep the
+  # `refs/heads/main` guard so only the default branch publishes.
+  #
   # changes:
   #   runs-on: ubuntu-latest
+  #   timeout-minutes: 5
   #   outputs:
   #     docs: ${{ steps.filter.outputs.docs }}
   #   steps:
-  #   - uses: actions/checkout@v3
-  #   - uses: dorny/paths-filter@v2
-  #     id: filter
-  #     with:
-  #       filters: |
-  #         docs:
-  #           - 'docs/**'
-
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - uses: dorny/paths-filter@v3
+  #       id: filter
+  #       with:
+  #         filters: |
+  #           docs:
+  #             - 'docs/**'
+  #
   # deploy-docs:
   #   needs: changes
-  #   if: ${{ needs.changes.outputs.docs == 'true' }}
+  #   if: ${{ needs.changes.outputs.docs == 'true' && github.ref == 'refs/heads/main' }}
   #   runs-on: ubuntu-latest
+  #   timeout-minutes: 15
+  #   permissions:
+  #     contents: write
+  #   concurrency:
+  #     group: gh-pages-deploy
+  #     cancel-in-progress: false
   #   steps:
-  #   - uses: actions/checkout@v3
-  #   - uses: actions/setup-python@v3
-  #     with:
-  #       python-version: 3.x
-  #   - run: pip install \
-  #       mkdocs-material \
-  #       mkdocs-macros-plugin \
-  #       mkdocs-awesome-pages-plugin \
-  #       mkdocstrings \
-  #       mkdocs-mermaid2-plugin
-  #   - run: mkdocs gh-deploy --force
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.10'
+  #         cache: pip
+  #     - name: Install mkdocs dependencies
+  #       uses: nick-fields/retry@v3
+  #       with:
+  #         timeout_minutes: 5
+  #         max_attempts: 3
+  #         retry_on: error
+  #         command: |
+  #           python -m pip install --upgrade pip
+  #           pip install --retries 5 --timeout 60 \
+  #             mkdocs-material \
+  #             mkdocs-macros-plugin \
+  #             mkdocs-awesome-pages-plugin \
+  #             mkdocstrings \
+  #             mkdocs-mermaid2-plugin
+  #     - run: mkdocs gh-deploy --force
