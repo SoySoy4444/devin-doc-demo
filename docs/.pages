@@ -1,2 +1,3 @@
 nav:
   - 'Overview': index.md
+  - 'Address API Notes': address-api-notes.md

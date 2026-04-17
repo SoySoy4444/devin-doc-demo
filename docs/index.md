@@ -25,6 +25,7 @@ flowchart LR
      └── main.py
     docs/               # project docs (mkdocs-material)
      └── index.md
+     └── address-api-notes.md
     migrations/
      ├── versions/
      ├── env.py
