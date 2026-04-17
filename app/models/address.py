@@ -6,6 +6,7 @@ class AddressBase(SQLModel):
     city: str
     country: str = "UK"
 
+
 class Address(AddressBase, table=True):
     id: int = Field(default=None, primary_key=True)
 
