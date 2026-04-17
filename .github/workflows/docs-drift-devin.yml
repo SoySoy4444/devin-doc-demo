@@ -1,0 +1,92 @@
+name: docs-drift-devin
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "app/**"
+      - "migrations/**"
+      - "pyproject.toml"
+      - "docker-compose.yml"
+
+concurrency:
+  group: docs-drift-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  trigger-devin:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect changed files
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
+          echo "Changed files:"
+          cat changed_files.txt
+
+      - name: Skip if no likely docs-impacting code changed
+        run: |
+          if ! grep -E '^(app/|migrations/|pyproject.toml|docker-compose.yml)' changed_files.txt; then
+            echo "No likely docs-impacting files changed. Exiting."
+            exit 0
+          fi
+
+      - name: Build API payload
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PLAYBOOK_ID: ${{ secrets.DEVIN_PLAYBOOK_ID }}
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+
+          changed_files = pathlib.Path("changed_files.txt").read_text()
+
+          prompt = f"""
+          Source PR: {os.environ['PR_URL']}
+          Source PR number: {os.environ['PR_NUMBER']}
+          Source PR title: {os.environ['PR_TITLE']}
+          Latest source commit SHA: {os.environ['PR_SHA']}
+
+          Changed files:
+          {changed_files}
+
+          Task:
+          Review this PR for likely documentation drift.
+          Focus on conceptual docs, not hand-editing machine-generated API reference.
+          If docs changes are needed, open or update a single draft docs PR.
+          Include a backlink to the source PR and the latest processed source commit SHA.
+          If confidence is low, leave a reviewer note instead of speculative prose.
+          If this looks like a breaking change, add a migration-note stub.
+          """
+
+          payload = {
+              "title": f"Docs drift for PR #{os.environ['PR_NUMBER']}",
+              "prompt": prompt,
+              "playbook_id": os.environ["PLAYBOOK_ID"],
+              "tags": ["docs-drift", f"pr-{os.environ['PR_NUMBER']}"],
+              "session_links": [os.environ["PR_URL"]]
+          }
+
+          with open("payload.json", "w") as f:
+              json.dump(payload, f)
+          PY
+
+      - name: Start Devin session
+        env:
+          DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+          DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+        run: |
+          curl -X POST "https://api.devin.ai/v3/organizations/${DEVIN_ORG_ID}/sessions" \
+            -H "Authorization: Bearer ${DEVIN_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data @payload.json
