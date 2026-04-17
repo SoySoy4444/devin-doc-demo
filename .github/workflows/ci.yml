@@ -42,32 +42,32 @@ jobs:
         -v $(pwd)/share:/root/pytest \
         ${{ env.TEST_TAG }} coverage report --format=markdown >> $GITHUB_STEP_SUMMARY
 
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      docs: ${{ steps.filter.outputs.docs }}
-    steps:
-    - uses: actions/checkout@v3
-    - uses: dorny/paths-filter@v2
-      id: filter
-      with:
-        filters: |
-          docs:
-            - 'docs/**'
+  # changes:
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     docs: ${{ steps.filter.outputs.docs }}
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - uses: dorny/paths-filter@v2
+  #     id: filter
+  #     with:
+  #       filters: |
+  #         docs:
+  #           - 'docs/**'
 
-  deploy-docs:
-    needs: changes
-    if: ${{ needs.changes.outputs.docs == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v3
-      with:
-        python-version: 3.x
-    - run: pip install \
-        mkdocs-material \
-        mkdocs-macros-plugin \
-        mkdocs-awesome-pages-plugin \
-        mkdocstrings \
-        mkdocs-mermaid2-plugin
-    - run: mkdocs gh-deploy --force
+  # deploy-docs:
+  #   needs: changes
+  #   if: ${{ needs.changes.outputs.docs == 'true' }}
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - uses: actions/setup-python@v3
+  #     with:
+  #       python-version: 3.x
+  #   - run: pip install \
+  #       mkdocs-material \
+  #       mkdocs-macros-plugin \
+  #       mkdocs-awesome-pages-plugin \
+  #       mkdocstrings \
+  #       mkdocs-mermaid2-plugin
+  #   - run: mkdocs gh-deploy --force
