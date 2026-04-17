@@ -5,6 +5,7 @@ class AddressBase(SQLModel):
     street_nr: str
     city: str
     country: str = "UK"
+    continent: str = "Europe"
 
 
 class Address(AddressBase, table=True):
