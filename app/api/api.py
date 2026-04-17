@@ -7,6 +7,7 @@ from fastapi import (
 from sqlalchemy.sql import text
 from sqlmodel import Session
 
+from app.api.auth import authenticated
 from app.core.config import API_VERSION
 from app.db import get_session
 
@@ -18,6 +19,7 @@ router = APIRouter()
     "/db-version",
     response_model=dict,
     tags=["Healthcheck"],
+    dependencies=[Depends(authenticated)],
 )
 async def db_version(session: Session = Depends(get_session)):
     version = session.execute(text("select sqlite_version()")).one()
@@ -25,4 +27,8 @@ async def db_version(session: Session = Depends(get_session)):
     return {"version": version}
 
 
-router.include_router(api.router, prefix=f"/{API_VERSION}")
+router.include_router(
+    api.router,
+    prefix=f"/{API_VERSION}",
+    dependencies=[Depends(authenticated)],
+)
