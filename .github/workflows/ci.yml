@@ -24,7 +24,9 @@ jobs:
       - uses: actions/checkout@v4
       # Pin to a specific release tag instead of the floating `@stable`
       # branch so the formatter version cannot change out from under us.
-      - uses: psf/black@25.1.0
+      # Kept on the 23.x line to match `black = "^23.3.0"` in pyproject.toml
+      # so CI and local `black` agree on the formatting rules.
+      - uses: psf/black@23.12.1
       # `chartboost/ruff-action` is archived/unmaintained. Use the
       # official action from Astral instead.
       - uses: astral-sh/ruff-action@v3
