@@ -2,11 +2,14 @@ from typing import Iterator
 
 from sqlmodel import Session, create_engine
 
-from app.core.config import DATABASE_URL
+from app.core.config import DATABASE_URL, DEBUG
 
+# Only echo SQL statements when the app is running in debug mode.
+# Echoing unconditionally leaks query contents (including user data) into
+# application logs in production.
 engine = create_engine(
     DATABASE_URL,
-    echo=True,
+    echo=DEBUG,
     connect_args=dict(check_same_thread=False),
 )
 

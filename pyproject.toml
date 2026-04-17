@@ -12,10 +12,14 @@ readme = "README.md"
 aiofiles = "^23.1.0"
 alembic = "^1.10.4"
 fastapi = "^0.95.1"
-gunicorn = "^20.1.0"
-jinja2 = "^3.1.2"
+# Bumped to patch CVE-2024-1135 (HTTP request smuggling, fixed in 22.0.0).
+gunicorn = "^22.0.0"
+# Bumped to patch CVE-2024-22195 / CVE-2024-34064 / CVE-2024-56201 /
+# CVE-2024-56326 / CVE-2025-27516 (all fixed by 3.1.6).
+jinja2 = "^3.1.6"
 psycopg2-binary = "^2.9.6"
-pydantic = "^1.10.7"
+# Bumped to patch CVE-2024-3772 (ReDoS in email validator, fixed in 1.10.15).
+pydantic = "^1.10.15"
 pydash = "^7.0.3"
 python = "^3.10"
 sqlmodel = "^0.0.8"
